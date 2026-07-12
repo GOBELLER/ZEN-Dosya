@@ -1,0 +1,283 @@
+﻿<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>e-Mesem Edebiyat Akıllı Not Otomasyonu v8</title>
+    <link href="https://fonts.googleapis.com/css2?family=Bangers&family=Kite+One&display=swap" rel="stylesheet">
+    
+    <style>
+        :root { --bg: #f8fafc; --card-bg: #ffffff; --primary: #0f172a; --primary-hover: #334155; --success: #059669; --danger: #dc2626; }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Kite One', sans-serif; background-color: var(--bg); padding: 20px; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+        .container { background-color: var(--card-bg); width: 100%; max-width: 1000px; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.1); padding: 30px; display: flex; flex-direction: column; gap: 20px; border-top: 8px solid var(--primary); }
+        h1 { font-family: 'Bangers', cursive; font-size: 3rem; color: var(--primary); text-align: center; letter-spacing: 2px; }
+        .info { background-color: #f1f5f9; padding: 20px; border-radius: 8px; border-left: 5px solid var(--primary); font-size: 1rem; line-height: 1.5; }
+        .text-danger { color: var(--danger); font-weight: bold; }
+        .grid-settings { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; background: #e2e8f0; padding: 15px; border-radius: 8px; }
+        .col-select { display: flex; flex-direction: column; }
+        .col-select label { font-weight: bold; margin-bottom: 5px; font-size: 0.9rem; }
+        select { padding: 8px; border-radius: 6px; border: 1px solid #cbd5e1; font-family: inherit; font-size: 0.95rem; }
+        textarea { font-family: monospace; width: 100%; height: 180px; padding: 15px; border-radius: 8px; border: 1px solid #cbd5e1; font-size: 1.1rem; resize: vertical; }
+        .btn { background-color: var(--primary); color: white; border: none; padding: 15px; font-size: 1.5rem; font-family: 'Bangers', cursive; border-radius: 8px; cursor: pointer; letter-spacing: 2px; transition: 0.2s; }
+        .btn:hover { background-color: var(--primary-hover); }
+        .btn.success { background-color: var(--success); }
+        #result-container { display: none; flex-direction: column; gap: 15px; margin-top: 10px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>EDEBİYAT AKILLI NOT OTOMASYONU v8.0</h1>
+        <div class="info">
+             <span class="text-danger">ÖLÜ DOM ÇÖZÜMÜ & TELERİK API:</span> Aynı sınıftaki birden fazla öğrenciye not girerken tablo yenilendiğinde yaşanan "veri atlama" sorunu kökten çözüldü. Notlar doğrudan e-Mesem'in çekirdeğine enjekte edilir.<br><br>
+             1. Öğrenci numarası ve notları boşlukla ayırarak yazın.<br>
+             2. Sütunları eşleştirin ve çalıştırın.
+        </div>
+        
+        <div class="grid-settings">
+            <div class="col-select"><label>1. Sütun</label><select disabled><option>Öğrenci Numarası</option></select></div>
+            <script>
+                const notTipleri = [
+                    {val: "yok", text: "Boş (İşlem Yapma)"},
+                    {val: "txtNot11", text: "1. Yazılı"},
+                    {val: "txtNot12", text: "1. Konuşma"},
+                    {val: "txtNot13", text: "1. Dinleme"},
+                    {val: "txtNot21", text: "2. Yazılı"},
+                    {val: "txtNot22", text: "2. Konuşma"},
+                    {val: "txtNot23", text: "2. Dinleme"},
+                    {val: "txtNotSozlu1", text: "1. Performans"},
+                    {val: "txtNotSozlu2", text: "2. Performans"}
+                ];
+                for(let i=2; i<=9; i++) {
+                    document.write(`<div class="col-select"><label>${i}. Sütun</label><select id="col${i-1}">`);
+                    notTipleri.forEach((tip, index) => {
+                        let selected = (i-1 === index) ? "selected" : "";
+                        if(index === 0 && i > 3) selected = "selected"; 
+                        document.write(`<option value="${tip.val}" ${selected}>${tip.text}</option>`);
+                    });
+                    document.write(`</select></div>`);
+                }
+            </script>
+        </div>
+        
+        <textarea id="veriKutusu" placeholder="25132 80 90 100&#10;24244 45 G 70"></textarea>
+        <button class="btn" onclick="kodUret()">KODU OLUŞTUR</button>
+        
+        <div id="result-container">
+            <button class="btn success" id="copyBtn" onclick="koduKopyala()">📋 KONSOL İÇİN KODU KOPYALA</button>
+        </div>
+    </div>
+    
+    <script>
+        let uretilenKod = "";
+        
+        function kodUret() {
+            let veri = document.getElementById("veriKutusu").value.trim();
+            if(!veri) return alert("Hata: Veri girişi yapmadın.");
+
+            let secimler = [];
+            for(let i=1; i<=8; i++) {
+                let el = document.getElementById("col" + i);
+                if(el.value !== "yok") {
+                    secimler.push({ sira: i, tip: el.value, ad: el.options[el.selectedIndex].text });
+                }
+            }
+
+            if(secimler.length === 0) return alert("Hata: Herhangi bir not sütunu seçilmedi.");
+
+            let satirlar = veri.split('\n'), ogrenciler = [];
+            satirlar.forEach(satir => {
+                let hucreler = satir.trim().split(/\s+/);
+                if(hucreler.length > 1 && hucreler[0] !== "") {
+                    let notDizisi = [];
+                    secimler.forEach(secim => {
+                        let val = hucreler[secim.sira] !== undefined ? hucreler[secim.sira].trim() : "";
+                        if(val !== "") notDizisi.push({ tip: secim.tip, ad: secim.ad, deger: val });
+                    });
+                    if(notDizisi.length > 0) ogrenciler.push({ no: hucreler[0], notlar: notDizisi });
+                }
+            });
+
+            if(ogrenciler.length === 0) return alert("Hata: Formatına uygun öğrenci verisi bulunamadı.");
+
+            uretilenKod = `
+(async function() {
+    console.clear();
+    console.log("%c🚀 Edebiyat Akıllı Otomasyonu (v8.0 - Kusursuz API Modu) Başlatıldı!", "color: #059669; font-size: 16px; font-weight:bold;");
+    
+    let bekleyenOgrenciler = ${JSON.stringify(ogrenciler)};
+    const sleep = ms => new Promise(r => setTimeout(r, ms));
+    let islemRaporu = [];
+
+    async function telerikTikla(element) {
+        element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        element.style.backgroundColor = "#fef08a"; 
+        element.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true, view: window }));
+        await sleep(50);
+        element.dispatchEvent(new MouseEvent('mouseup', { bubbles: true, cancelable: true, view: window }));
+        await sleep(50);
+        element.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));
+    }
+
+    async function bekleAjax() {
+        let limit = 120;
+        while (limit > 0) {
+            let isBusy = false;
+            let loading = document.getElementById('mrcLoading');
+            if (loading && loading.style.display !== 'none' && loading.style.visibility !== 'hidden') isBusy = true;
+            try { if (window.Sys && Sys.WebForms && Sys.WebForms.PageRequestManager && Sys.WebForms.PageRequestManager.getInstance().get_isInAsyncPostBack()) isBusy = true; } catch(e){}
+            if (!isBusy) break;
+            await sleep(250);
+            limit--;
+        }
+        await sleep(800); 
+    }
+
+    let sinifListesiSelector = 'table[id*="rgSinifList"] tbody tr:not(.rgNoRecords), table[id*="rgSinifEdebiyatList"] tbody tr:not(.rgNoRecords)';
+    let dersListesiSelector = 'table[id*="rgSinifDersList"] tbody tr:not(.rgNoRecords), table[id*="rgSinifDersEdebiyatList"] tbody tr:not(.rgNoRecords)';
+    let ogrenciListesiSelector = 'table[id*="rgOgrenci_ctl00"] tbody tr:not(.rgNoRecords), table[id*="rgOgrenciEdebiyat"] tbody tr:not(.rgNoRecords)';
+
+    let baslangicSinifListesi = document.querySelectorAll(sinifListesiSelector);
+    let toplamSinif = baslangicSinifListesi.length;
+    
+    if(toplamSinif === 0) return alert("1. Sütun (Sınıf listesi) bulunamadı! Sayfanın yüklendiğinden emin ol.");
+
+    console.log("Toplam taranacak sınıf sayısı: " + toplamSinif);
+
+    for (let i = 0; i < toplamSinif; i++) {
+        if(bekleyenOgrenciler.length === 0) break; 
+
+        // 1. AŞAMA
+        let guncelSinifListesi = document.querySelectorAll(sinifListesiSelector);
+        if (!guncelSinifListesi[i]) continue;
+
+        let sinifSatir = guncelSinifListesi[i];
+        if (sinifSatir.style.display === 'none') continue;
+
+        let sinifAd = sinifSatir.innerText.trim().replace(/\\n/g, ' ').split('\\t')[0] || "Bilinmeyen Sınıf";
+        console.log("📂 SINIF: " + sinifAd);
+        
+        let tiklanacakHucre = sinifSatir.querySelector('td[align="left"]') || sinifSatir.cells[2] || sinifSatir.cells[0];
+        await telerikTikla(tiklanacakHucre);
+        await bekleAjax();
+
+        // 2. AŞAMA
+        let guncelDersListesi = document.querySelectorAll(dersListesiSelector);
+        let toplamDers = guncelDersListesi.length;
+
+        if (toplamDers === 0) {
+            console.log("⚠️ Ders bulunamadı, diğer sınıfa geçiliyor.");
+            continue;
+        }
+
+        for (let d = 0; d < toplamDers; d++) {
+            if(bekleyenOgrenciler.length === 0) break;
+
+            let dersSatirlari = document.querySelectorAll(dersListesiSelector);
+            if (!dersSatirlari[d]) continue;
+
+            let dersSatir = dersSatirlari[d];
+            let dersAd = dersSatir.innerText.trim().replace(/\\n/g, ' ').split('\\t')[0] || "Bilinmeyen Ders";
+            console.log("   📚 DERS: " + dersAd);
+
+            let dersTiklanacakHucre = dersSatir.querySelector('td[align="left"]') || dersSatir.querySelector('td[align="center"]') || dersSatir.cells[0];
+            await telerikTikla(dersTiklanacakHucre);
+            await bekleAjax();
+
+            // 3. AŞAMA
+            for (let j = bekleyenOgrenciler.length - 1; j >= 0; j--) {
+                // DOM YENİLENDİĞİ İÇİN ÖĞRENCİ LİSTESİNİ DÖNGÜ İÇİNDE SÜREKLİ GÜNCELLİYORUZ
+                let guncelOgrSatirlari = document.querySelectorAll(ogrenciListesiSelector);
+                let ogr = bekleyenOgrenciler[j];
+                let hedefSatir = Array.from(guncelOgrSatirlari).find(s => s.querySelector('td') && s.innerText.includes(ogr.no));
+
+                if (hedefSatir) {
+                    console.log("      ✅ ÖĞRENCİ BULUNDU: " + ogr.no);
+                    hedefSatir.style.backgroundColor = "#bbf7d0"; 
+                    
+                    let degisim = false;
+                    for (let notData of ogr.notlar) {
+                        let inputKutu = hedefSatir.querySelector('input[id*="' + notData.tip + '"]');
+                        if(inputKutu) {
+                            let yeni = String(notData.deger).toUpperCase().trim();
+                            if(inputKutu.value.toUpperCase() !== yeni) {
+                                inputKutu.focus();
+                                
+                                // ÇEKİRDEK TELERİK API ENJEKSİYONU
+                                try {
+                                    let telerikObj = $find(inputKutu.id);
+                                    if(telerikObj && typeof telerikObj.set_value === "function") {
+                                        telerikObj.set_value(yeni);
+                                    } else {
+                                        inputKutu.value = yeni;
+                                        inputKutu.setAttribute('value', yeni);
+                                    }
+                                } catch(e) {
+                                    inputKutu.value = yeni;
+                                    inputKutu.setAttribute('value', yeni);
+                                }
+
+                                inputKutu.dispatchEvent(new Event('input', { bubbles: true }));
+                                inputKutu.dispatchEvent(new Event('change', { bubbles: true }));
+                                inputKutu.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true }));
+                                inputKutu.blur();
+                                degisim = true;
+                                await sleep(300);
+                            }
+                        }
+                    }
+                    
+                    if(degisim) {
+                        let kaydetBtn = document.getElementById('wucPageHeader1_btnToolSave');
+                        if(kaydetBtn) {
+                            kaydetBtn.click();
+                            await bekleAjax();
+                            
+                            // Telerik Alert pop-up'ını otomatik geçmek için tarama
+                            let alertDeneme = 0;
+                            while(alertDeneme < 15) {
+                                let tamamBtn = document.querySelector('.rwOkBtn');
+                                if(tamamBtn && tamamBtn.offsetParent !== null) {
+                                    tamamBtn.click();
+                                    await sleep(400);
+                                    break;
+                                }
+                                await sleep(200);
+                                alertDeneme++;
+                            }
+                            await bekleAjax(); // Pop-up sonrası sayfanın oturmasını bekle
+                        }
+                        islemRaporu.push({"No": ogr.no, "Durum": "Başarılı", "Sınıf": sinifAd, "Ders": dersAd});
+                    } else {
+                        islemRaporu.push({"No": ogr.no, "Durum": "Değişiklik Yok", "Sınıf": sinifAd, "Ders": dersAd});
+                    }
+                    
+                    bekleyenOgrenciler.splice(j, 1);
+                }
+            }
+        }
+    }
+    
+    for (let ogr of bekleyenOgrenciler) {
+        islemRaporu.push({"No": ogr.no, "Durum": "Hata: Öğrenci Bulunamadı", "Sınıf": "-", "Ders": "-"});
+    }
+    
+    console.log("%c==================================================", "color: #4f46e5; font-weight: bold;");
+    console.log("%c🎉 İŞLEM BİTTİ! İŞTE SONUÇ RAPORUNUZ:", "color: #10b981; font-size: 16px; font-weight: bold;");
+    console.table(islemRaporu);
+    alert("Otomasyon tamamlandı! Konsoldaki (F12) raporu inceleyin.");
+})();`;
+            
+            document.getElementById("result-container").style.display = "flex";
+            document.getElementById("copyBtn").innerHTML = "📋 KONSOL İÇİN KODU KOPYALA";
+            document.getElementById("copyBtn").scrollIntoView();
+        }
+
+        function koduKopyala() {
+            navigator.clipboard.writeText(uretilenKod).then(() => {
+                document.getElementById("copyBtn").innerHTML = "KOPYALANDI! GİT VE YAPIŞTIR!";
+            });
+        }
+    </script>
+</body>
+</html>
